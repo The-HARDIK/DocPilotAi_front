@@ -122,6 +122,7 @@ export default function App() {
   const [stepExplainVisible, setStepExplainVisible] = useState({}); // { [msgIdx]: numberOfStepsRevealed }
 
   const [showPdfViewer, setShowPdfViewer] = useState(true);
+  const [hasBuiltinKnowledge, setHasBuiltinKnowledge] = useState(true);
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfScale, setPdfScale] = useState(1.0);
@@ -143,49 +144,34 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Apply theme class to document body
   useEffect(() => {
-    // Edge case: update color-scheme for native elements (scrollbars, form controls)
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-
-    // Edge case: update meta theme-color for browser chrome/mobile
-    let metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (!metaTheme) {
-      metaTheme = document.createElement('meta');
-      metaTheme.name = 'theme-color';
-      document.head.appendChild(metaTheme);
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
     }
-    metaTheme.content = theme === 'dark' ? '#0f1311' : '#f8f6f0';
-
     try {
       localStorage.setItem("docpilot-theme", theme);
-    } catch {
-      // Ignore localStorage write failures
-    }
+    } catch {}
   }, [theme]);
 
-  // Edge case: Listen to OS dark/light mode switches
+  // Listen to OS system theme changes if user hasn't explicitly set a preference
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-
     const handleSystemThemeChange = (e) => {
       try {
-        const saved = localStorage.getItem("docpilot-theme");
-        // Only auto-switch if user hasn't explicitly set a preference
-        if (!saved) {
+        if (!localStorage.getItem("docpilot-theme")) {
           setTheme(e.matches ? "dark" : "light");
         }
-      } catch {
-        setTheme(e.matches ? "dark" : "light");
-      }
+      } catch {}
     };
 
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener("change", handleSystemThemeChange);
       return () => mediaQuery.removeEventListener("change", handleSystemThemeChange);
     } else if (mediaQuery.addListener) {
-      // Fallback for older Safari / browsers
       mediaQuery.addListener(handleSystemThemeChange);
       return () => mediaQuery.removeListener(handleSystemThemeChange);
     }
@@ -196,11 +182,17 @@ export default function App() {
     fetch(`${API_BASE}/status`)
       .then(res => res.json())
       .then(data => {
+        if (data.has_builtin_knowledge !== undefined) {
+          setHasBuiltinKnowledge(data.has_builtin_knowledge);
+        }
         if (data.documents && data.documents.length > 0) {
           setDocuments(data.documents);
           const initialDoc = data.active_document || data.documents[0].filename;
           setActiveDocName(initialDoc);
           setPdfUrl(`${API_BASE}/document?filename=${encodeURIComponent(initialDoc)}&t=${Date.now()}`);
+        } else if (data.has_builtin_knowledge) {
+          setActiveDocName("Operating_Systems_Core_Guide.pdf");
+          setPdfUrl(`${API_BASE}/document?filename=Operating_Systems_Core_Guide.pdf&t=${Date.now()}`);
         }
       })
       .catch(() => {});
@@ -387,6 +379,9 @@ export default function App() {
     for (const f of filesToUpload) {
       formData.append("files", f);
     }
+    if (user?.id) {
+      formData.append("user_id", user.id);
+    }
 
     try {
       const res = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
@@ -454,7 +449,7 @@ export default function App() {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isQuerying || documents.length === 0) return;
+    if (!input.trim() || isQuerying) return;
 
     let currentSessionId = activeChatId;
 
@@ -513,7 +508,7 @@ export default function App() {
   };
 
   const handleGenerateGuide = async () => {
-    if (documents.length === 0 || isGeneratingGuide) return;
+    if (isGeneratingGuide) return;
     setIsGeneratingGuide(true);
     setActiveTab("guide");
 
@@ -911,6 +906,20 @@ export default function App() {
         {/* --- TAB 1: DOCUMENTS --- */}
         {sidebarMode === "docs" && (
           <>
+            {/* Built-in Knowledge Base Badge */}
+            <div className="builtin-kb-badge shrink-0 flex items-center justify-between px-3 py-2 border border-accent/20 rounded-lg bg-accent/5 mb-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <BookOpen size={14} className="text-accent shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-semibold text-xs text-ink truncate">Operating Systems Guide</div>
+                  <div className="text-[0.65rem] text-muted truncate">Built-in Knowledge • Ready</div>
+                </div>
+              </div>
+              <span className="text-[0.65rem] font-medium text-accent bg-accent/15 px-2 py-0.5 rounded-full shrink-0">
+                Active
+              </span>
+            </div>
+
             {/* Upload area or compact capacity badge when 5/5 reached */}
             {documents.length >= MAX_DOCS ? (
               <div className="capacity-full-badge shrink-0 flex items-center justify-between px-3 py-2 border border-border rounded-md bg-surface-2 mb-3">
@@ -941,7 +950,7 @@ export default function App() {
                   <div className="flex items-center justify-center gap-2.5 py-0.5">
                     <Upload size={16} className="muted-icon shrink-0" />
                     <div className="text-left">
-                      <div className="upload-title text-xs leading-tight">Upload PDFs</div>
+                      <div className="upload-title text-xs leading-tight">Upload Custom PDFs</div>
                       <div className="upload-hint text-[0.68rem] leading-tight">
                         Add up to {MAX_DOCS} PDFs ({MAX_DOCS - documents.length} remaining)
                       </div>
@@ -956,7 +965,7 @@ export default function App() {
               <div className="flex items-center justify-between mb-2 shrink-0">
                 <div className="section-label flex items-center gap-1.5">
                   <Files size={13} />
-                  <span>Library ({documents.length}/{MAX_DOCS})</span>
+                  <span>Custom Library ({documents.length}/{MAX_DOCS})</span>
                 </div>
                 {documents.length > 0 && (
                   <button
@@ -1007,7 +1016,12 @@ export default function App() {
                   })}
                 </div>
               ) : (
-                <span className="muted-copy block py-2 text-xs">No documents loaded yet. Upload up to 5 PDFs above.</span>
+                <div className="py-3 text-center text-muted px-2">
+                  <p className="text-xs font-semibold text-ink">Built-in OS Q&A Ready</p>
+                  <p className="text-[0.68rem] text-faint mt-0.5">
+                    Ask questions directly in chat, or upload custom PDFs above to analyze your personal notes.
+                  </p>
+                </div>
               )}
             </div>
           </>
@@ -1091,19 +1105,17 @@ export default function App() {
         <div className="sidebar-footer-dock shrink-0 pt-2 mt-auto border-t border-border space-y-2">
           {/* Action buttons: viewer toggle & study guide */}
           <div className="space-y-1.5">
-            {documents.length > 0 && (
-              <button 
-                onClick={() => setShowPdfViewer(prev => !prev)} 
-                className="secondary-action w-full justify-center text-xs py-1.5"
-              >
-                {showPdfViewer ? <EyeOff size={13} /> : <Eye size={13} />}
-                <span>{showPdfViewer ? "Hide PDF Viewer" : "Show PDF Viewer"}</span>
-              </button>
-            )}
+            <button 
+              onClick={() => setShowPdfViewer(prev => !prev)} 
+              className="secondary-action w-full justify-center text-xs py-1.5"
+            >
+              {showPdfViewer ? <EyeOff size={13} /> : <Eye size={13} />}
+              <span>{showPdfViewer ? "Hide PDF Viewer" : "Show PDF Viewer"}</span>
+            </button>
 
             <button
               onClick={handleGenerateGuide}
-              disabled={documents.length === 0 || isGeneratingGuide}
+              disabled={isGeneratingGuide}
               className="primary-action w-full justify-center text-xs py-2 font-semibold"
             >
               {isGeneratingGuide ? <Loader2 size={13} className="animate-spin" /> : <BookOpen size={13} />}
@@ -1162,14 +1174,14 @@ export default function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 overflow-hidden">
-        <main className={`workspace-pane flex h-full flex-col transition-all duration-300 ${showPdfViewer && documents.length > 0 ? 'w-1/2' : 'w-full'}`}>
+        <main className={`workspace-pane flex h-full flex-col transition-all duration-300 ${showPdfViewer && pdfUrl ? 'w-1/2' : 'w-full'}`}>
           <header className="topbar">
             <div className="tab-list">
               <button
                 onClick={() => setActiveTab("chat")}
                 className={activeTab === "chat" ? "tab-button active" : "tab-button"}
               >
-                Document Q&A
+                Study Q&A
               </button>
               <button
                 onClick={() => setActiveTab("guide")}
@@ -1184,11 +1196,11 @@ export default function App() {
                   💬 {chats.find(c => c.id === activeChatId)?.title || "Session"}
                 </span>
               )}
-              {documents.length > 0 && (
-                <span className="chunk-badge">
-                  {documents.length} {documents.length === 1 ? 'doc' : 'docs'} • {totalChunks} chunks
-                </span>
-              )}
+              <span className="chunk-badge">
+                {documents.length > 0
+                  ? `${documents.length} Custom PDF${documents.length > 1 ? 's' : ''} • ${totalChunks} chunks`
+                  : '📚 OS Knowledge Base Active'}
+              </span>
             </div>
           </header>
 
@@ -1196,10 +1208,35 @@ export default function App() {
             <div className="flex h-[calc(100vh-3.5rem)] flex-1 flex-col overflow-hidden">
               <div className="conversation-scroll flex-1 space-y-4 overflow-y-auto p-5">
                 {messages.length === 0 ? (
-                  <div className="empty-state">
-                    <FileText size={42} />
-                    <h1>Query your document collection.</h1>
-                    <p>Upload up to 5 PDFs. Answers synthesize context and cite source documents and page numbers.</p>
+                  <div className="empty-state py-8 text-center max-w-xl mx-auto">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-accent/10 text-accent mb-3 border border-accent/20 shadow-sm">
+                      <Sparkles size={24} />
+                    </div>
+                    <h1 className="text-xl font-bold text-ink">Operating Systems AI Tutor</h1>
+                    <p className="text-xs text-muted mt-1 max-w-md mx-auto leading-relaxed">
+                      Ask questions directly from the built-in Operating Systems knowledge base, or upload your own PDFs for multi-doc synthesis.
+                    </p>
+                    <div className="mt-6 flex flex-col gap-2 text-left w-full">
+                      <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-faint px-1">Quick Start Questions</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {[
+                          "Explain Round Robin vs SJF CPU scheduling with trade-offs",
+                          "How does Banker's Algorithm prevent Deadlocks?",
+                          "Explain Paging, TLB, and Effective Access Time (EAT)",
+                          "Difference between Mutex and Binary Semaphore"
+                        ].map((pill, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setInput(pill)}
+                            className="p-3 text-xs text-ink bg-surface-2 hover:bg-surface-3 border border-border hover:border-accent/40 rounded-xl transition-all text-left flex items-start gap-2.5 cursor-pointer group shadow-sm"
+                          >
+                            <span className="text-accent text-[12px] mt-0.5 shrink-0">💡</span>
+                            <span className="group-hover:text-accent transition-colors font-medium leading-snug">{pill}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   messages.map((msg, i) => (
@@ -1358,11 +1395,11 @@ export default function App() {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder={documents.length > 0 ? "Ask a question across your documents..." : "Upload up to 5 PDFs first..."}
-                    disabled={documents.length === 0 || isQuerying}
+                    placeholder={documents.length > 0 ? "Ask across your documents & OS guide..." : "Ask any question on Operating Systems..."}
+                    disabled={isQuerying}
                     className="composer-input"
                   />
-                  <button type="submit" disabled={documents.length === 0 || !input.trim() || isQuerying} className="send-button" aria-label="Send question">
+                  <button type="submit" disabled={!input.trim() || isQuerying} className="send-button" aria-label="Send question">
                     <Send size={15} />
                   </button>
                 </form>
@@ -1375,7 +1412,7 @@ export default function App() {
               {isGeneratingGuide ? (
                 <div className="empty-state h-64">
                   <Loader2 size={26} className="animate-spin text-accent" />
-                  <p>Synthesizing full chapter summaries into a master guide across documents...</p>
+                  <p>Synthesizing comprehensive master study guide...</p>
                 </div>
               ) : studyGuide ? (
                 <article className="study-paper markdown-body">
@@ -1389,14 +1426,14 @@ export default function App() {
               ) : (
                 <div className="empty-state h-64">
                   <BookOpen size={34} />
-                  <p>Generate a study guide from the sidebar to synthesize chapter notes across all uploaded PDFs.</p>
+                  <p>Click 'Generate Study Guide' in the sidebar to create an in-depth exam review & concept synthesis.</p>
                 </div>
               )}
             </div>
           )}
         </main>
 
-        {showPdfViewer && documents.length > 0 && pdfUrl && (
+        {showPdfViewer && pdfUrl && (
           <section className="pdf-pane flex h-full w-1/2 flex-col border-l border-border">
             {/* Multi-Doc Selector Tab Strip */}
             {documents.length > 1 && (
