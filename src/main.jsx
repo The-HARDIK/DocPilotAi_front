@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import App from './App.jsx'
 import './index.css'
+import 'katex/dist/katex.min.css'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "247202504530-chsa46107gb9ii7l9aob0spg945fg6pq.apps.googleusercontent.com";
 

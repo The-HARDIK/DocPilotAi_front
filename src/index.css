@@ -612,10 +612,10 @@ html.theme-transitioning *::after {
 }
 
 .message-bubble {
-  max-width: min(42rem, 92%);
+  max-width: min(54rem, 94%);
   border-radius: 0.5rem;
-  padding: 0.9rem 1rem;
-  font-size: 0.82rem;
+  padding: 0.95rem 1.15rem;
+  font-size: 0.83rem;
   line-height: 1.65;
   box-shadow: var(--shadow);
 }
@@ -636,6 +636,124 @@ html.theme-transitioning *::after {
   border: 1px solid color-mix(in srgb, var(--accent), transparent 30%);
   background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
   color: var(--ink);
+}
+
+/* =========================================================
+   Markdown Body Typography, Tables, Code Blocks, and KaTeX
+   ========================================================= */
+.markdown-body {
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: inherit;
+  word-break: break-word;
+}
+
+.markdown-body p {
+  margin-bottom: 0.75rem;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  font-weight: 700;
+  color: var(--ink);
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.35;
+}
+
+.markdown-body h1 { font-size: 1.25rem; }
+.markdown-body h2 { font-size: 1.1rem; }
+.markdown-body h3 { font-size: 0.95rem; }
+
+.markdown-body ul, .markdown-body ol {
+  margin: 0.5rem 0 0.75rem 1.25rem;
+}
+
+.markdown-body ul { list-style-type: disc; }
+.markdown-body ol { list-style-type: decimal; }
+
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+
+/* Elegant Responsive Tables */
+.markdown-body table {
+  width: 100%;
+  margin: 0.9rem 0;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  display: table;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--surface-2);
+}
+
+.markdown-body th, .markdown-body td {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.markdown-body th {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.markdown-body tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+
+.markdown-body tr:hover td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* Monospace Pre & Code Blocks for Gantt Charts and ASCII */
+.markdown-body pre {
+  margin: 0.85rem 0;
+  padding: 0.85rem 1rem;
+  background: #111827;
+  color: #f3f4f6;
+  border-radius: 0.45rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: pre;
+}
+
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.84em;
+}
+
+.markdown-body :not(pre) > code {
+  padding: 0.15rem 0.35rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  color: var(--accent);
+}
+
+/* KaTeX Math Styling */
+.markdown-body .katex {
+  font-size: 1.05em;
+  color: inherit;
+}
+
+.markdown-body .katex-display {
+  margin: 0.85rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4rem 0;
 }
 
 .citation-block {
@@ -1206,3 +1324,234 @@ html.theme-transitioning *::after {
   border-left: 4px solid var(--accent);
 }
 
+/* =========================================================
+   Step-by-Step Explain Feature
+   ========================================================= */
+
+/* Trigger button at the bottom of each assistant message */
+.step-explain-trigger {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed color-mix(in srgb, var(--border), transparent 40%);
+}
+
+.step-explain-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 2rem;
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 50%);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 8%, var(--surface)),
+    color-mix(in srgb, var(--accent) 15%, var(--surface))
+  );
+  color: var(--accent);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 200ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.step-explain-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    transparent, rgba(255,255,255,0.12), transparent
+  );
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0%   { transform: translateX(-50%); }
+  100% { transform: translateX(50%); }
+}
+
+.step-explain-btn:hover {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 18%, var(--surface)),
+    color-mix(in srgb, var(--accent) 28%, var(--surface))
+  );
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 25%, transparent);
+  transform: translateY(-1px);
+}
+
+.step-explain-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
+}
+
+/* Step Explain Panel */
+.step-explain-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 4%, var(--surface-2)),
+    color-mix(in srgb, var(--accent) 8%, var(--surface-2))
+  );
+}
+
+.step-explain-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.step-explain-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.step-explain-counter {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 0.15rem 0.55rem;
+  border-radius: 1rem;
+}
+
+/* Step Cards with Timeline Dots */
+.step-cards {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-card {
+  display: flex;
+  gap: 0.75rem;
+  animation: stepSlideIn 0.4s ease-out both;
+}
+
+@keyframes stepSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.step-card-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0.45rem;
+  flex-shrink: 0;
+  width: 16px;
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  flex-shrink: 0;
+}
+
+.step-line {
+  width: 2px;
+  flex: 1;
+  min-height: 16px;
+  background: color-mix(in srgb, var(--accent) 30%, var(--border));
+  margin: 4px 0;
+}
+
+.step-card-body {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0 0.85rem;
+  font-size: 0.82rem;
+}
+
+.step-card-body h3 {
+  color: var(--accent) !important;
+  font-size: 0.88rem !important;
+  margin-top: 0 !important;
+}
+
+/* Step Controls */
+.step-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--border);
+}
+
+.step-next-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 0.35rem;
+  border: none;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.73rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.step-next-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.step-showall-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.step-showall-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Step Complete Badge */
+.step-complete {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--success) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--success) 35%, var(--border));
+  color: var(--success);
+  font-size: 0.72rem;
+  font-weight: 700;
+}

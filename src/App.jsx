@@ -9,6 +9,8 @@ import {
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -20,6 +22,57 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 const MAX_DOCS = 5;
+
+function preprocessMarkdown(text) {
+  if (!text || typeof text !== "string") return "";
+
+  // 1. Convert tab-separated lines into standard markdown pipe tables
+  const lines = text.split("\n");
+  const processed = [];
+  let tabBlock = [];
+
+  const flushTabBlock = () => {
+    if (tabBlock.length === 0) return;
+    if (tabBlock.length === 1) {
+      processed.push(tabBlock[0]);
+    } else {
+      const headerCols = tabBlock[0].split("\t").map(c => c.trim()).filter(Boolean);
+      if (headerCols.length > 1) {
+        processed.push("| " + headerCols.join(" | ") + " |");
+        processed.push("| " + headerCols.map(() => "---").join(" | ") + " |");
+        for (let i = 1; i < tabBlock.length; i++) {
+          const rowCols = tabBlock[i].split("\t").map(c => c.trim());
+          while (rowCols.length < headerCols.length) rowCols.push("");
+          processed.push("| " + rowCols.slice(0, headerCols.length).join(" | ") + " |");
+        }
+      } else {
+        processed.push(...tabBlock);
+      }
+    }
+    tabBlock = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.includes("\t") && line.split("\t").length > 1) {
+      tabBlock.push(line);
+    } else {
+      flushTabBlock();
+      processed.push(line);
+    }
+  }
+  flushTabBlock();
+
+  let result = processed.join("\n");
+
+  // 2. Wrap ASCII diagrams / Gantt charts (+---+ or |...|) into code blocks if unfenced
+  result = result.replace(
+    /(?:^|\n)(\+[+-]+\+\n(?:\|[^\n]+\|\n)+\+[+-]+\+(?:\n[ \d]+)?)/g,
+    (match, block) => `\n\`\`\`text\n${block.trim()}\n\`\`\`\n`
+  );
+
+  return result;
+}
 
 export default function App() {
   const [currentView, setCurrentView] = useState("landing"); // "landing" | "workspace"
@@ -62,6 +115,11 @@ export default function App() {
   const [studyGuide, setStudyGuide] = useState("");
   const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
   const [expandedSources, setExpandedSources] = useState({});
+
+  // Step-by-Step Explain feature state
+  const [stepExplainData, setStepExplainData] = useState({}); // { [msgIdx]: { steps: [], totalSteps: N } }
+  const [stepExplainLoading, setStepExplainLoading] = useState({}); // { [msgIdx]: true/false }
+  const [stepExplainVisible, setStepExplainVisible] = useState({}); // { [msgIdx]: numberOfStepsRevealed }
 
   const [showPdfViewer, setShowPdfViewer] = useState(true);
   const [numPages, setNumPages] = useState(null);
@@ -486,6 +544,55 @@ export default function App() {
 
   const toggleSource = (idx) => {
     setExpandedSources(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  // ---- Step-by-Step Explain Handlers ----
+  const handleStepExplain = async (msgIdx) => {
+    const msg = messages[msgIdx];
+    if (!msg || msg.role !== "assistant") return;
+
+    // Find the user question that preceded this answer
+    let questionText = "";
+    for (let j = msgIdx - 1; j >= 0; j--) {
+      if (messages[j].role === "user") {
+        questionText = messages[j].content;
+        break;
+      }
+    }
+    if (!questionText) questionText = "Explain this answer step by step.";
+
+    setStepExplainLoading(prev => ({ ...prev, [msgIdx]: true }));
+
+    try {
+      const res = await fetch(`${API_BASE}/step-explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: questionText, answer: msg.content })
+      });
+
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+
+      setStepExplainData(prev => ({ ...prev, [msgIdx]: data }));
+      setStepExplainVisible(prev => ({ ...prev, [msgIdx]: 1 })); // reveal first step
+    } catch (err) {
+      showToast(`Step-by-step explain failed: ${err.message}`, "error");
+    } finally {
+      setStepExplainLoading(prev => ({ ...prev, [msgIdx]: false }));
+    }
+  };
+
+  const revealNextStep = (msgIdx) => {
+    setStepExplainVisible(prev => {
+      const current = prev[msgIdx] || 0;
+      const total = stepExplainData[msgIdx]?.steps?.length || 0;
+      return { ...prev, [msgIdx]: Math.min(current + 1, total) };
+    });
+  };
+
+  const revealAllSteps = (msgIdx) => {
+    const total = stepExplainData[msgIdx]?.steps?.length || 0;
+    setStepExplainVisible(prev => ({ ...prev, [msgIdx]: total }));
   };
 
   const toggleTheme = () => {
@@ -1099,8 +1206,11 @@ export default function App() {
                     <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                       <div className={msg.role === "user" ? "message-bubble user" : "message-bubble assistant"}>
                         <div className="markdown-body leading-relaxed">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {preprocessMarkdown(msg.content)}
                           </ReactMarkdown>
                         </div>
 
@@ -1148,6 +1258,87 @@ export default function App() {
                             )}
                           </div>
                         )}
+
+                        {/* Step-by-Step Explain Button — appears on assistant messages */}
+                        {msg.role === "assistant" && !stepExplainData[i] && (
+                          <div className="step-explain-trigger">
+                            <button
+                              onClick={() => handleStepExplain(i)}
+                              disabled={stepExplainLoading[i]}
+                              className="step-explain-btn"
+                            >
+                              {stepExplainLoading[i] ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Generating step-by-step walkthrough...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles size={13} />
+                                  <span>Step-by-Step Explain</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Step-by-Step Reveal Panel */}
+                        {stepExplainData[i] && stepExplainData[i].steps && (
+                          <div className="step-explain-panel">
+                            <div className="step-explain-header">
+                              <Sparkles size={13} className="text-accent" />
+                              <span className="step-explain-title">
+                                Step-by-Step Walkthrough
+                              </span>
+                              <span className="step-explain-counter">
+                                {stepExplainVisible[i] || 0} / {stepExplainData[i].steps.length} steps
+                              </span>
+                            </div>
+
+                            <div className="step-cards">
+                              {stepExplainData[i].steps.slice(0, stepExplainVisible[i] || 0).map((step, sIdx) => (
+                                <div
+                                  key={sIdx}
+                                  className="step-card"
+                                  style={{ animationDelay: `${sIdx * 0.08}s` }}
+                                >
+                                  <div className="step-card-indicator">
+                                    <div className="step-dot" />
+                                    {sIdx < (stepExplainVisible[i] || 0) - 1 && <div className="step-line" />}
+                                  </div>
+                                  <div className="step-card-body markdown-body">
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm, remarkMath]}
+                                      rehypePlugins={[rehypeKatex]}
+                                    >
+                                      {preprocessMarkdown(step)}
+                                    </ReactMarkdown>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Step Controls */}
+                            {(stepExplainVisible[i] || 0) < stepExplainData[i].steps.length && (
+                              <div className="step-controls">
+                                <button onClick={() => revealNextStep(i)} className="step-next-btn">
+                                  <ChevronRight size={13} />
+                                  Next Step
+                                </button>
+                                <button onClick={() => revealAllSteps(i)} className="step-showall-btn">
+                                  Show All ({stepExplainData[i].steps.length - (stepExplainVisible[i] || 0)} remaining)
+                                </button>
+                              </div>
+                            )}
+
+                            {(stepExplainVisible[i] || 0) >= stepExplainData[i].steps.length && (
+                              <div className="step-complete">
+                                <CheckCircle2 size={14} />
+                                <span>All {stepExplainData[i].steps.length} steps revealed</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -1188,8 +1379,11 @@ export default function App() {
                 </div>
               ) : studyGuide ? (
                 <article className="study-paper markdown-body">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {studyGuide}
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {preprocessMarkdown(studyGuide)}
                   </ReactMarkdown>
                 </article>
               ) : (
