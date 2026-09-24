@@ -1147,16 +1147,14 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="flex-1 min-w-0 flex items-center overflow-hidden">
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={() => showToast("Google Sign-In failed.", "error")}
-                  theme={theme === 'dark' ? 'filled_black' : 'outline'}
-                  size="medium"
-                  shape="pill"
-                  text="signin"
-                  width="180"
-                />
+              <div className="flex-1 min-w-0 flex items-center">
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border text-ink transition-colors cursor-pointer w-full justify-center"
+                >
+                  <LogIn size={13} className="text-accent" />
+                  <span>Sign In</span>
+                </button>
               </div>
             )}
 
