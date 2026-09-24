@@ -3,7 +3,7 @@ import {
   Upload, Send, FileText, BookOpen, Layers,
   CheckCircle2, Loader2, ChevronDown, ChevronUp,
   ChevronLeft, ChevronRight, Eye, EyeOff, ZoomIn, ZoomOut,
-  Moon, Sun, Trash2, Files, MessageSquare, Plus, LogOut, Clock, Sparkles,
+  Moon, Sun, Trash2, Files, MessageSquare, Plus, LogIn, LogOut, Clock, Sparkles,
   Home, AlertCircle, X
 } from 'lucide-react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
