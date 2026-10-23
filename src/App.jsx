@@ -419,6 +419,9 @@ export default function App() {
     setActiveTab("chat");
     setMobileTab("chat");
     closeMobileDrawerIfSmall();
+    if (String(chatId).startsWith("guest-")) {
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/chats/messages/${chatId}`);
       const data = await res.json();
@@ -617,25 +620,35 @@ export default function App() {
     setIsQuerying(true);
 
     try {
+      const convIdToSend = (typeof currentSessionId === "number" || (currentSessionId && !String(currentSessionId).startsWith("guest-") && !isNaN(Number(currentSessionId))))
+        ? Number(currentSessionId)
+        : null;
+
       const res = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: userMessage.content,
           chat_history: messages.map(m => ({ role: m.role, content: m.content })),
-          conversation_id: currentSessionId
+          conversation_id: convIdToSend
         })
       });
       const data = await res.json();
+      if (!res.ok) {
+        const errorDetail = typeof data?.detail === "string" 
+          ? data.detail 
+          : (Array.isArray(data?.detail) ? data.detail.map(d => d.msg || JSON.stringify(d)).join(", ") : "Server error: " + res.status);
+        throw new Error(errorDetail);
+      }
       setMessages([...newMessages, {
         role: "assistant",
-        content: data.answer,
+        content: data.answer || "No response generated. Please retry.",
         sources: data.sources || []
       }]);
-    } catch {
+    } catch (err) {
       setMessages([...newMessages, {
         role: "assistant",
-        content: "Error communicating with the assistant.",
+        content: `⚠️ Could not complete request: ${err.message || "Error communicating with the assistant."}`,
         sources: []
       }]);
     } finally {
