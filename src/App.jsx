@@ -82,6 +82,26 @@ function preprocessMarkdown(text) {
   return result;
 }
 
+function extractInteractiveOptions(text) {
+  if (!text || typeof text !== "string") return null;
+  const lines = text.split("\n");
+  const options = [];
+  const optRegex = /^[ \t]*(?:[-*•]|\d+\.)?[ \t]*(?:🔘|🔹|▶️)?\s*\*{0,2}\(?([A-D])\)[.:]?\*{0,2}\s+(.+)$/i;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const match = trimmed.match(optRegex);
+    if (match) {
+      options.push({
+        key: match[1].toUpperCase(),
+        text: match[2].trim().replace(/\*+/g, "").replace(/^[:.-]\s*/, "")
+      });
+    }
+  }
+
+  return options.length >= 2 ? options : null;
+}
+
 export default function App() {
   const [currentView, setCurrentView] = useState("landing"); // "landing" | "workspace"
   const [toasts, setToasts] = useState([]);
@@ -101,7 +121,6 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [dbDocuments, setDbDocuments] = useState([]);
   const [defaultDocuments, setDefaultDocuments] = useState([]);
-  const [libSubTab, setLibSubTab] = useState("workspace"); // "workspace" | "database" | "builtins"
   const [activeDocName, setActiveDocName] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("chat");
@@ -542,12 +561,13 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isQuerying) return;
+  const handleSendMessage = async (e, customText = null) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const textToSend = (customText !== null ? customText : input).trim();
+    if (!textToSend || isQuerying) return;
 
     let currentSessionId = activeChatId;
-    const promptSnippet = input.trim().slice(0, 30) + (input.trim().length > 30 ? "..." : "");
+    const promptSnippet = textToSend.slice(0, 30) + (textToSend.length > 30 ? "..." : "");
 
     // Auto-create a brand new chat session whenever user prompts from zero
     if (!currentSessionId) {
@@ -590,7 +610,7 @@ export default function App() {
       }
     }
 
-    const userMessage = { role: "user", content: input };
+    const userMessage = { role: "user", content: textToSend };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
@@ -1097,32 +1117,17 @@ export default function App() {
 
                 <div className="w-5 h-[1px] bg-border my-0.5 opacity-60" />
 
-                {/* Workspace Library */}
+                {/* Document Library */}
                 <button
                   onClick={() => {
                     setIsSidebarOpen(true);
                     setSidebarMode("docs");
-                    setLibSubTab("workspace");
                   }}
-                  className={`rail-icon-btn ${sidebarMode === 'docs' && libSubTab === 'workspace' ? 'active' : ''}`}
+                  className={`rail-icon-btn ${sidebarMode === 'docs' ? 'active' : ''}`}
                   aria-label="Document Library"
                 >
                   <Files size={15} />
-                  <span className="rail-tooltip">Workspace Docs</span>
-                </button>
-
-                {/* Cloud Database */}
-                <button
-                  onClick={() => {
-                    setIsSidebarOpen(true);
-                    setSidebarMode("docs");
-                    setLibSubTab("database");
-                  }}
-                  className={`rail-icon-btn ${sidebarMode === 'docs' && libSubTab === 'database' ? 'active' : ''}`}
-                  aria-label="Cloud Database Archive"
-                >
-                  <Database size={15} />
-                  <span className="rail-tooltip">Cloud DB Archive</span>
+                  <span className="rail-tooltip">Documents</span>
                 </button>
 
                 {/* Chat History */}
@@ -1303,272 +1308,92 @@ export default function App() {
             {/* --- TAB 1: DOCUMENTS (MODULAR) --- */}
             {sidebarMode === "docs" && (
               <>
-                {/* Modular Subtabs: Workspace (Active), Neon DB Archive, Standard Guides */}
-                <div className="lib-subtabs shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setLibSubTab("workspace")}
-                    className={`lib-subtab ${libSubTab === "workspace" ? "active" : ""}`}
-                    title="Active workspace documents loaded in vector index"
-                  >
-                    <Layers size={11} />
-                    <span>Workspace ({documents.length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLibSubTab("database")}
-                    className={`lib-subtab ${libSubTab === "database" ? "active" : ""}`}
-                    title="All documents stored in Neon PostgreSQL cloud database"
-                  >
-                    <Database size={11} />
-                    <span>Cloud DB ({dbDocuments.length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLibSubTab("builtins")}
-                    className={`lib-subtab ${libSubTab === "builtins" ? "active" : ""}`}
-                    title="Standard academic guides & reference textbooks"
-                  >
-                    <BookOpen size={11} />
-                    <span>Guides ({defaultDocuments.length || 2})</span>
-                  </button>
-                </div>
-
-                {/* Subtab 1: Workspace Active Docs & Upload Dropzone */}
-                {libSubTab === "workspace" && (
-                  <>
-                    {/* Upload area or compact capacity badge when 5/5 reached */}
-                    {documents.length >= MAX_DOCS ? (
-                      <div className="capacity-full-badge shrink-0 flex items-center justify-between px-3 py-2 mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 size={14} className="text-success shrink-0" />
-                          <span className="font-semibold text-xs text-ink">Capacity Full ({MAX_DOCS}/{MAX_DOCS})</span>
-                        </div>
-                        <span className="text-[0.68rem] text-faint">Delete doc to add</span>
+                {/* Upload area or compact capacity badge when 5/5 reached */}
+                {documents.length >= MAX_DOCS ? (
+                  <div className="capacity-full-badge shrink-0 flex items-center justify-between px-3 py-2 mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 size={14} className="text-success shrink-0" />
+                      <span className="font-semibold text-xs text-ink">Capacity Full ({MAX_DOCS}/{MAX_DOCS})</span>
+                    </div>
+                    <span className="text-[0.68rem] text-faint">Delete doc to add</span>
+                  </div>
+                ) : (
+                  <div className="upload-panel relative shrink-0 mb-2 py-2.5 px-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf"
+                      multiple
+                      onChange={handleFileUpload}
+                      disabled={isUploading}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                      style={{ zIndex: 2 }}
+                      aria-label="Upload PDF documents"
+                    />
+                    {isUploading ? (
+                      <div className="flex items-center justify-center gap-2 py-1 relative" style={{ zIndex: 1 }}>
+                        <Loader2 className="animate-spin text-accent" size={16} />
+                        <span className="small-label text-xs">Indexing into corpus...</span>
                       </div>
                     ) : (
-                      <div className="upload-panel relative shrink-0 mb-2 py-2.5 px-3">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept=".pdf"
-                          multiple
-                          onChange={handleFileUpload}
-                          disabled={isUploading}
-                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
-                          style={{ zIndex: 2 }}
-                          aria-label="Upload PDF documents"
-                        />
-                        {isUploading ? (
-                          <div className="flex items-center justify-center gap-2 py-1 relative" style={{ zIndex: 1 }}>
-                            <Loader2 className="animate-spin text-accent" size={16} />
-                            <span className="small-label text-xs">Indexing into corpus...</span>
+                      <div className="flex items-center justify-center gap-2.5 py-0.5 relative" style={{ zIndex: 1 }}>
+                        <Upload size={16} className="muted-icon shrink-0" />
+                        <div className="text-left">
+                          <div className="upload-title text-xs leading-tight">Upload Custom PDFs</div>
+                          <div className="upload-hint text-[0.65rem] leading-tight">
+                            {MAX_DOCS - documents.length} slot{MAX_DOCS - documents.length !== 1 ? 's' : ''} remaining
                           </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-2.5 py-0.5 relative" style={{ zIndex: 1 }}>
-                            <Upload size={16} className="muted-icon shrink-0" />
-                            <div className="text-left">
-                              <div className="upload-title text-xs leading-tight">Upload Custom PDFs</div>
-                              <div className="upload-hint text-[0.65rem] leading-tight">
-                                {MAX_DOCS - documents.length} slot{MAX_DOCS - documents.length !== 1 ? 's' : ''} remaining
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Document Library */}
-                    <div className="status-panel flex-1 min-h-0 flex flex-col mb-2 p-2.5">
-                      <div className="flex items-center justify-between mb-2 shrink-0">
-                        <div className="sidebar-section-title">
-                          <Files size={12} />
-                          <span>Active Library ({documents.length}/{MAX_DOCS})</span>
                         </div>
-                        {documents.length > 0 && (
-                          <button
-                            onClick={handleClearAll}
-                            className="sidebar-section-action text-danger"
-                            title="Remove all documents"
-                            style={{ color: 'var(--danger)' }}
-                          >
-                            <Trash2 size={10} />
-                            Clear all
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Stats Row */}
-                      {documents.length > 0 && (
-                        <div className="stats-row shrink-0 mb-1.5">
-                          <div className="stat-chip">
-                            <FileText size={10} />
-                            <span className="stat-value">{documents.length}</span> docs
-                          </div>
-                          <div className="stat-chip">
-                            <Database size={10} />
-                            <span className="stat-value">{totalChunks}</span> chunks
-                          </div>
-                          {activeDocName && (
-                            <div className="stat-chip">
-                              <Eye size={10} />
-                              <span className="stat-value" title={activeDocName}>viewing</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {documents.length > 0 ? (
-                        <div className="doc-library-list flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
-                          {documents.map((doc) => {
-                            const isActive = doc.filename === activeDocName;
-                            return (
-                              <div
-                                key={doc.filename}
-                                className={`doc-card-modular ${isActive ? 'active' : ''}`}
-                              >
-                                <div className="doc-card-header">
-                                  <div className="doc-card-title-wrap">
-                                    <FileText size={14} className={isActive ? "text-accent shrink-0" : "muted-icon shrink-0"} />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="doc-card-title" title={doc.filename}>{doc.filename}</div>
-                                      <div className="doc-card-meta">
-                                        <span>{doc.chunks} chunks</span>
-                                        {isActive && <span className="badge-source active-badge">Viewing</span>}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={(e) => handleDeleteDoc(e, doc.filename)}
-                                    className="btn-doc-action danger"
-                                    title={`Remove ${doc.filename}`}
-                                    aria-label={`Remove ${doc.filename}`}
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                                <div className="doc-card-actions">
-                                  <button
-                                    onClick={() => switchActiveDoc(doc.filename)}
-                                    className={`btn-doc-action ${isActive ? 'primary' : ''}`}
-                                  >
-                                    <Eye size={11} />
-                                    <span>{isActive ? 'In Viewer' : 'View PDF'}</span>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="py-4 text-center text-muted px-2 flex-1 flex flex-col items-center justify-center">
-                          <div className="w-9 h-9 rounded-xl bg-accent-soft flex items-center justify-center text-accent mb-2">
-                            <Search size={18} />
-                          </div>
-                          <p className="text-xs font-semibold text-ink">Workspace Ready</p>
-                          <p className="text-[0.66rem] text-faint mt-1 leading-relaxed">
-                            Upload PDFs above, or pick from Cloud DB and Guides tabs.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {/* Subtab 2: Neon PostgreSQL DB Stored Documents */}
-                {libSubTab === "database" && (
-                  <div className="status-panel flex-1 min-h-0 flex flex-col mb-2 p-2.5">
-                    <div className="flex items-center justify-between mb-2 shrink-0">
-                      <div className="sidebar-section-title">
-                        <Database size={12} />
-                        <span>Cloud Database Archive</span>
-                      </div>
-                      <button
-                        onClick={fetchAllDocuments}
-                        className="sidebar-section-action"
-                        title="Refresh database records"
-                      >
-                        <Sparkles size={10} />
-                        Refresh
-                      </button>
-                    </div>
-
-                    {dbDocuments.length > 0 ? (
-                      <div className="doc-library-list flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
-                        {dbDocuments.map((doc) => {
-                          const isActive = doc.filename === activeDocName;
-                          const isLoaded = documents.some(d => d.filename === doc.filename);
-                          return (
-                            <div
-                              key={doc.filename}
-                              className={`doc-card-modular ${isActive ? 'active' : ''}`}
-                            >
-                              <div className="doc-card-header">
-                                <div className="doc-card-title-wrap">
-                                  <Database size={14} className="text-accent shrink-0" />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="doc-card-title" title={doc.filename}>{doc.filename}</div>
-                                    <div className="doc-card-meta">
-                                      <span>{formatBytes(doc.file_size)}</span>
-                                      <span>•</span>
-                                      <span className="badge-source db">Neon DB</span>
-                                      {isLoaded && <span className="badge-source active-badge">In Chat</span>}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="doc-card-actions">
-                                <button
-                                  onClick={() => switchActiveDoc(doc.filename)}
-                                  className={`btn-doc-action ${isActive ? 'primary' : ''}`}
-                                  title="Open in split-screen PDF viewer"
-                                >
-                                  <Eye size={11} />
-                                  <span>{isActive ? 'In Viewer' : 'View PDF'}</span>
-                                </button>
-                                {!isLoaded && (
-                                  <button
-                                    onClick={() => indexDocIntoWorkspace(doc.filename)}
-                                    className="btn-doc-action primary"
-                                    title="Load into active workspace so you can ask questions"
-                                  >
-                                    <Plus size={11} />
-                                    <span>Index to Chat</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="py-6 text-center text-muted px-3 flex-1 flex flex-col items-center justify-center">
-                        <div className="w-10 h-10 rounded-xl bg-accent-soft flex items-center justify-center text-accent mb-2">
-                          <Database size={20} />
-                        </div>
-                        <p className="text-xs font-bold text-ink">Cloud DB Ready</p>
-                        <p className="text-[0.68rem] text-faint mt-1 leading-relaxed">
-                          PDFs you upload are automatically saved into Neon PostgreSQL cloud database and will appear here permanently.
-                        </p>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Subtab 3: Built-in Academic Guides & Textbooks */}
-                {libSubTab === "builtins" && (
-                  <div className="status-panel flex-1 min-h-0 flex flex-col mb-2 p-2.5">
-                    <div className="flex items-center justify-between mb-2 shrink-0">
-                      <div className="sidebar-section-title">
-                        <BookOpen size={12} />
-                        <span>Academic Guides & Texts</span>
-                      </div>
+                {/* Document Library */}
+                <div className="status-panel flex-1 min-h-0 flex flex-col mb-2 p-2.5">
+                  <div className="flex items-center justify-between mb-2 shrink-0">
+                    <div className="sidebar-section-title">
+                      <Files size={12} />
+                      <span>Document Library ({documents.length}/{MAX_DOCS})</span>
                     </div>
+                    {documents.length > 0 && (
+                      <button
+                        onClick={handleClearAll}
+                        className="sidebar-section-action text-danger"
+                        title="Remove all uploaded documents"
+                        style={{ color: 'var(--danger)' }}
+                      >
+                        <Trash2 size={10} />
+                        Clear all
+                      </button>
+                    )}
+                  </div>
 
-                    <div className="doc-library-list flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
-                      {defaultDocuments.map((doc) => {
-                        const isActive = doc.filename === activeDocName || (doc.actual_filename && doc.actual_filename === activeDocName);
-                        const isLoaded = documents.some(d => d.filename === doc.filename || d.filename === doc.actual_filename);
+                  {/* Stats Row */}
+                  {documents.length > 0 && (
+                    <div className="stats-row shrink-0 mb-1.5">
+                      <div className="stat-chip">
+                        <FileText size={10} />
+                        <span className="stat-value">{documents.length}</span> docs
+                      </div>
+                      <div className="stat-chip">
+                        <Database size={10} />
+                        <span className="stat-value">{totalChunks}</span> chunks
+                      </div>
+                      {activeDocName && (
+                        <div className="stat-chip">
+                          <Eye size={10} />
+                          <span className="stat-value" title={activeDocName}>viewing</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="doc-library-list flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+                    {/* User-Uploaded Documents */}
+                    {documents.length > 0 ? (
+                      documents.map((doc) => {
+                        const isActive = doc.filename === activeDocName;
                         return (
                           <div
                             key={doc.filename}
@@ -1576,44 +1401,47 @@ export default function App() {
                           >
                             <div className="doc-card-header">
                               <div className="doc-card-title-wrap">
-                                <BookOpen size={14} className="text-accent shrink-0" />
+                                <FileText size={14} className={isActive ? "text-accent shrink-0" : "muted-icon shrink-0"} />
                                 <div className="min-w-0 flex-1">
                                   <div className="doc-card-title" title={doc.filename}>{doc.filename}</div>
                                   <div className="doc-card-meta">
-                                    <span>{formatBytes(doc.file_size)}</span>
-                                    <span>•</span>
-                                    <span className="badge-source builtin">Standard Guide</span>
-                                    {isLoaded && <span className="badge-source active-badge">In Chat</span>}
+                                    <span>{doc.chunks} chunks</span>
+                                    {isActive && <span className="badge-source active-badge">Viewing</span>}
                                   </div>
                                 </div>
                               </div>
+                              <button
+                                onClick={(e) => handleDeleteDoc(e, doc.filename)}
+                                className="btn-doc-action danger"
+                                title={`Remove ${doc.filename}`}
+                                aria-label={`Remove ${doc.filename}`}
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             </div>
                             <div className="doc-card-actions">
                               <button
-                                onClick={() => switchActiveDoc(doc.actual_filename || doc.filename)}
+                                onClick={() => switchActiveDoc(doc.filename)}
                                 className={`btn-doc-action ${isActive ? 'primary' : ''}`}
-                                title="Open this guide in split-screen PDF viewer"
                               >
                                 <Eye size={11} />
                                 <span>{isActive ? 'In Viewer' : 'View PDF'}</span>
                               </button>
-                              {!isLoaded && (
-                                <button
-                                  onClick={() => indexDocIntoWorkspace(doc.actual_filename || doc.filename)}
-                                  className="btn-doc-action primary"
-                                  title="Load into workspace vector index for Q&A"
-                                >
-                                  <Plus size={11} />
-                                  <span>Index to Chat</span>
-                                </button>
-                              )}
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
+                      })
+                    ) : (
+                      <div className="py-3 text-center text-muted px-2">
+                        <p className="text-xs font-semibold text-ink">No Custom PDFs</p>
+                        <p className="text-[0.66rem] text-faint mt-0.5">
+                          Upload your notes or assignment PDFs above to ask questions.
+                        </p>
+                      </div>
+                    )}
+
                   </div>
-                )}
+                </div>
               </>
             )}
 
@@ -1803,7 +1631,7 @@ export default function App() {
                         </div>
                         <h1 className="text-xl font-bold text-ink">Operating Systems AI Tutor</h1>
                         <p className="text-xs text-muted mt-1 max-w-md mx-auto leading-relaxed">
-                          Ask questions directly from the built-in Operating Systems knowledge base, or upload your own PDFs for multi-doc synthesis.
+                          Upload your PDFs to ask questions, explore concepts, and get instant interactive explanations.
                         </p>
                         <div className="mt-6 flex flex-col gap-2 text-left w-full">
                           <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-faint px-1">Quick Start Questions</span>
@@ -1828,7 +1656,10 @@ export default function App() {
                         </div>
                       </div>
                     ) : (
-                      messages.map((msg, i) => (
+                      messages.map((msg, i) => {
+                        const interactiveOptions = msg.role === "assistant" ? extractInteractiveOptions(msg.content) : null;
+                        const isLatestAssistantMsg = msg.role === "assistant" && i === messages.length - 1;
+                        return (
                         <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                           <div className={msg.role === "user" ? "message-bubble user" : "message-bubble assistant"}>
                             <div className="markdown-body leading-relaxed">
@@ -1839,6 +1670,67 @@ export default function App() {
                                 {preprocessMarkdown(msg.content)}
                               </ReactMarkdown>
                             </div>
+
+                            {/* Interactive Teacher Quiz / MCQ Buttons */}
+                            {interactiveOptions && (
+                              <div className="interactive-quiz-container">
+                                <div className="interactive-quiz-header">
+                                  <Sparkles size={13} className="text-accent animate-pulse" />
+                                  <span>Teacher's Quick Check — Tap your choice:</span>
+                                </div>
+                                <div className="interactive-quiz-options">
+                                  {interactiveOptions.map((opt) => (
+                                    <button
+                                      key={opt.key}
+                                      type="button"
+                                      disabled={isQuerying}
+                                      onClick={() => handleSendMessage(null, `Option ${opt.key}: ${opt.text}`)}
+                                      className="interactive-option-chip group"
+                                    >
+                                      <span className="opt-key-badge">{opt.key}</span>
+                                      <span className="opt-text">{opt.text}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Quick Teacher Prompt Chips (on latest assistant message) */}
+                            {isLatestAssistantMsg && !isQuerying && (
+                              <div className="teacher-action-chips">
+                                <span className="text-[0.66rem] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
+                                  💡 Ask Teacher:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendMessage(null, "Can you explain this with a simpler everyday analogy?")}
+                                  className="teacher-chip"
+                                >
+                                  🧸 Simpler Analogy
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendMessage(null, "Give me a quick numerical or real-world example of this.")}
+                                  className="teacher-chip"
+                                >
+                                  🔢 Quick Example
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendMessage(null, "Give me another practice question on this topic.")}
+                                  className="teacher-chip"
+                                >
+                                  ❓ Another Quiz
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendMessage(null, "What should I learn next after this?")}
+                                  className="teacher-chip"
+                                >
+                                  ➡️ What's Next?
+                                </button>
+                              </div>
+                            )}
 
                             {msg.sources && msg.sources.length > 0 && (
                               <div className="citation-block">
@@ -1967,7 +1859,8 @@ export default function App() {
                             )}
                           </div>
                         </div>
-                      ))
+                        );
+                      })
                     )}
                     {isQuerying && (
                       <div className="query-status">
